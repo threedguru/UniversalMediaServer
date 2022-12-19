@@ -60,9 +60,15 @@ public class MediaTableFiles extends MediaTable {
 	public static final String SQL_LEFT_JOIN_TABLE_THUMBNAILS = "LEFT JOIN " + MediaTableThumbnails.TABLE_NAME + " ON " + TABLE_COL_THUMBID + " = " + MediaTableThumbnails.TABLE_COL_ID + " ";
 	public static final String SQL_LEFT_JOIN_TABLE_VIDEO_METADATA = "LEFT JOIN " + MediaTableVideoMetadata.TABLE_NAME + " ON " + TABLE_COL_ID + " = " + MediaTableVideoMetadata.TABLE_COL_FILEID + " ";
 
+	private static final String INSERT_COLUMNS = "FILENAME, MODIFIED, FORMAT_TYPE, DURATION, BITRATE, WIDTH, HEIGHT, MEDIA_SIZE, CODECV, FRAMERATE, ASPECTRATIODVD, ASPECTRATIOCONTAINER, " +
+		"ASPECTRATIOVIDEOTRACK, REFRAMES, AVCLEVEL, IMAGEINFO, CONTAINER, MUXINGMODE, FRAMERATEMODE, STEREOSCOPY, MATRIXCOEFFICIENTS, TITLECONTAINER, TITLEVIDEOTRACK, VIDEOTRACKCOUNT, " +
+		"IMAGECOUNT, BITDEPTH, HDRFORMAT, PIXELASPECTRATIO, SCANTYPE, SCANORDER";
+
 	private static final String SQL_GET_ID_FILENAME = "SELECT " + TABLE_COL_ID + " FROM " + TABLE_NAME + " WHERE " + TABLE_COL_FILENAME + " = ? LIMIT 1";
 	private static final String SQL_GET_ID_FILENAME_MODIFIED = "SELECT " + TABLE_COL_ID + " FROM " + TABLE_NAME + " WHERE " + TABLE_COL_FILENAME + " = ? AND " + TABLE_COL_MODIFIED + " = ? LIMIT 1";
 	private static final String SQL_GET_ALL_FILENAME_MODIFIED = "SELECT * FROM " + TABLE_NAME + " " + SQL_LEFT_JOIN_TABLE_THUMBNAILS + " WHERE " + TABLE_COL_FILENAME + " = ? AND " + TABLE_COL_MODIFIED + " = ? LIMIT 1";
+	private static final String SQL_GET_INSERT_COLUMNS_BY_FILENAME = "SELECT " + TABLE_COL_ID + ", " + INSERT_COLUMNS + " FROM " + TABLE_NAME + " WHERE " + TABLE_COL_FILENAME + " = ? LIMIT 1";
+	private static final String SQL_INSERT_COLUMNS = "INSERT INTO " + TABLE_NAME + " (" + INSERT_COLUMNS + ")" + createDefaultValueForInsertStatement(INSERT_COLUMNS);
 
 	public static final String NONAME = "###";
 
@@ -93,8 +99,9 @@ public class MediaTableFiles extends MediaTable {
 	 * - 29-30: No db changes, improved filename parsing
 	 * - 31: Redo the changes from version 27 because the versioning got muddled
 	 * - 32: Added an index for the Media Library Movies folder that includes duration
+	 * - 33: Added HDRFORMAT column
 	 */
-	private static final int TABLE_VERSION = 33;
+	private static final int TABLE_VERSION = 34;
 
 	// Database column sizes
 	private static final int SIZE_CODECV = 32;
@@ -346,6 +353,11 @@ public class MediaTableFiles extends MediaTable {
 						executeUpdate(connection, "CREATE INDEX IF NOT EXISTS " + TABLE_NAME + "_" + COL_THUMBID + "_IDX ON " + TABLE_NAME + "(" + COL_THUMBID + ")");
 						LOGGER.trace(LOG_UPGRADED_TABLE, DATABASE_NAME, TABLE_NAME, currentVersion, version);
 					}
+					case 33 -> {
+						//Rename sql reserved words
+						LOGGER.trace("Adding HDRFORMAT column");
+						executeUpdate(connection, "ALTER TABLE " + TABLE_NAME + " ADD COLUMN IF NOT EXISTS HDRFORMAT VARCHAR");
+					}
 					default -> {
 						// Do the dumb way
 						force = true;
@@ -423,6 +435,7 @@ public class MediaTableFiles extends MediaTable {
 			sb.append(", VIDEOTRACKCOUNT         INTEGER");
 			sb.append(", IMAGECOUNT              INTEGER");
 			sb.append(", BITDEPTH                INTEGER");
+			sb.append(", HDRFORMAT               VARCHAR(").append(SIZE_MAX).append(')');
 			sb.append(", PIXELASPECTRATIO        VARCHAR(").append(SIZE_MAX).append(')');
 			sb.append(", SCANTYPE                OTHER");
 			sb.append(", SCANORDER               OTHER");
@@ -566,6 +579,7 @@ public class MediaTableFiles extends MediaTable {
 					media.setVideoTrackCount(rs.getInt("VIDEOTRACKCOUNT"));
 					media.setImageCount(rs.getInt("IMAGECOUNT"));
 					media.setVideoBitDepth(rs.getInt("BITDEPTH"));
+					media.setVideoHDRFormat(rs.getString("HDRFORMAT"));
 					media.setPixelAspectRatio(rs.getString("PIXELASPECTRATIO"));
 					media.setScanType((DLNAMediaInfo.ScanType) rs.getObject("SCANTYPE"));
 					media.setScanOrder((DLNAMediaInfo.ScanOrder) rs.getObject("SCANORDER"));
@@ -633,15 +647,7 @@ public class MediaTableFiles extends MediaTable {
 	public static void insertOrUpdateData(final Connection connection, String name, long modified, int type, DLNAMediaInfo media) throws SQLException {
 		try {
 			long fileId = -1;
-			try (PreparedStatement ps = connection.prepareStatement("SELECT " +
-					"ID, FILENAME, MODIFIED, FORMAT_TYPE, DURATION, BITRATE, WIDTH, HEIGHT, MEDIA_SIZE, CODECV, FRAMERATE, " +
-					"ASPECTRATIODVD, ASPECTRATIOCONTAINER, ASPECTRATIOVIDEOTRACK, REFRAMES, AVCLEVEL, IMAGEINFO, " +
-					"CONTAINER, MUXINGMODE, FRAMERATEMODE, STEREOSCOPY, MATRIXCOEFFICIENTS, TITLECONTAINER, " +
-					"TITLEVIDEOTRACK, VIDEOTRACKCOUNT, IMAGECOUNT, BITDEPTH, PIXELASPECTRATIO, SCANTYPE, SCANORDER " +
-				"FROM " + TABLE_NAME + " " +
-				"WHERE " +
-					TABLE_COL_FILENAME + " = ? " +
-				"LIMIT 1",
+			try (PreparedStatement ps = connection.prepareStatement(SQL_GET_INSERT_COLUMNS_BY_FILENAME,
 				ResultSet.TYPE_FORWARD_ONLY,
 				ResultSet.CONCUR_UPDATABLE
 			)) {
@@ -692,6 +698,7 @@ public class MediaTableFiles extends MediaTable {
 							rs.updateInt("VIDEOTRACKCOUNT", media.getVideoTrackCount());
 							rs.updateInt("IMAGECOUNT", media.getImageCount());
 							rs.updateInt("BITDEPTH", media.getVideoBitDepth());
+							rs.updateString("HDRFORMAT", StringUtils.left(media.getVideoHDRFormat(), SIZE_MAX));
 							rs.updateString("PIXELASPECTRATIO", StringUtils.left(media.getPixelAspectRatio(), SIZE_MAX));
 							updateSerialized(rs, media.getScanType(), "SCANTYPE");
 							updateSerialized(rs, media.getScanOrder(), "SCANORDER");
@@ -703,15 +710,8 @@ public class MediaTableFiles extends MediaTable {
 
 			if (fileId < 0) {
 				// No fileId means it didn't exist
-				String columns = "FILENAME, MODIFIED, FORMAT_TYPE, DURATION, BITRATE, WIDTH, HEIGHT, MEDIA_SIZE, CODECV, " +
-					"FRAMERATE, ASPECTRATIODVD, ASPECTRATIOCONTAINER, ASPECTRATIOVIDEOTRACK, REFRAMES, AVCLEVEL, IMAGEINFO, " +
-					"CONTAINER, MUXINGMODE, FRAMERATEMODE, STEREOSCOPY, MATRIXCOEFFICIENTS, TITLECONTAINER, " +
-					"TITLEVIDEOTRACK, VIDEOTRACKCOUNT, IMAGECOUNT, BITDEPTH, PIXELASPECTRATIO, SCANTYPE, SCANORDER";
-
 				try (
-					PreparedStatement ps = connection.prepareStatement(
-						"INSERT INTO " + TABLE_NAME + " (" + columns + ")" +
-						createDefaultValueForInsertStatement(columns),
+					PreparedStatement ps = connection.prepareStatement(SQL_INSERT_COLUMNS,
 						Statement.RETURN_GENERATED_KEYS
 					)
 				) {
@@ -761,6 +761,7 @@ public class MediaTableFiles extends MediaTable {
 						ps.setInt(++databaseColumnIterator, media.getVideoTrackCount());
 						ps.setInt(++databaseColumnIterator, media.getImageCount());
 						ps.setInt(++databaseColumnIterator, media.getVideoBitDepth());
+						ps.setString(++databaseColumnIterator, StringUtils.left(media.getVideoHDRFormat(), SIZE_MAX));
 						ps.setString(++databaseColumnIterator, StringUtils.left(media.getPixelAspectRatio(), SIZE_MAX));
 						insertSerialized(ps, media.getScanType(), ++databaseColumnIterator);
 						insertSerialized(ps, media.getScanOrder(), ++databaseColumnIterator);
@@ -788,6 +789,7 @@ public class MediaTableFiles extends MediaTable {
 						ps.setInt(++databaseColumnIterator, 0);
 						ps.setInt(++databaseColumnIterator, 0);
 						ps.setInt(++databaseColumnIterator, 0);
+						ps.setNull(++databaseColumnIterator, Types.VARCHAR);
 						ps.setNull(++databaseColumnIterator, Types.VARCHAR);
 						ps.setNull(++databaseColumnIterator, Types.OTHER);
 						ps.setNull(++databaseColumnIterator, Types.OTHER);
