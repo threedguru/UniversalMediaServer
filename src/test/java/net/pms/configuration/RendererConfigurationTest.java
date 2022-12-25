@@ -16,17 +16,18 @@
  */
 package net.pms.configuration;
 
-import ch.qos.logback.classic.LoggerContext;
-import java.util.*;
-import net.pms.PMS;
-import net.pms.util.SortedHeaderMap;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import java.util.Locale;
 import org.apache.commons.configuration.ConfigurationException;
 import org.junit.jupiter.api.AfterEach;
-import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import ch.qos.logback.classic.LoggerContext;
+import net.pms.PMS;
+import net.pms.util.SortedHeaderMap;
 
 /**
  * Test the RendererConfiguration class
@@ -95,6 +96,8 @@ public class RendererConfigurationTest {
 			"User-Agent: MPlayer 1.0rc4-4.2.1",
 			"User-Agent: NSPlayer/4.1.0.3856"
 		);
+
+		testHeaders("Bigscreen", "User-Agent: Bigscreen/0.909.28.dfc427-beta-brutalist-beta");
 
 		testHeaders("D-Link DSM-510", "User-Agent: DLNADOC/1.50 INTEL_NMPR/2.1");
 
@@ -173,6 +176,8 @@ public class RendererConfigurationTest {
 			"User-Agent: Streamium/1.0"
 		);
 
+		testHeaders("Pigasus", "User-Agent: Android/10 UPnP/1.0 Cling/2.0");
+
 		testHeaders(
 			"PlayStation 3",
 			"User-Agent: PLAYSTATION 3",
@@ -241,7 +246,7 @@ public class RendererConfigurationTest {
 		testUPNPDetails("Samsung EH5300", "modelName=UA32EH5300");
 
 		testHeaders("Samsung ES8000", "User-Agent: SEC_HHP_[TV]UE46ES8000/1.0 DLNADOC/1.50");
-		
+
 		testHeaders("Samsung LED UHD", "USER-AGENT: DLNADOC/1.50 SEC_HHP_[TV] UE88KS9810/1.0 UPnP/1.0");
 		testUPNPDetails("Samsung LED UHD", "modelName=UE88KS9810");
 
@@ -290,6 +295,10 @@ public class RendererConfigurationTest {
 		testHeaders("Showtime 3", "User-Agent: Showtime 3.0", "X-AV-Client-Info: Showtime 3.0");
 
 		testHeaders("Showtime 4", "User-Agent: Showtime PS3 4.2");
+
+		testHeaders("Skybox VR Player",
+					"User-Agent: Linux/4.19.81+, UPnP/1.0, SKYBOX STUDIO for UPnP devices/1.14.12",
+					"User-Agent: Linux/4.19.81+, UPnP/1.0, Portable SDK for UPnP devices/17.1.5");
 
 		testHeaders("Sony Bluray UBP-X800M2", "X-AV-Client-Info: av=5.0; cn=\"Sony Corporation\"; mn=\"UBP-X800M2\"; mv=\"2.0\";");
 
